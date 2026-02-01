@@ -96,18 +96,47 @@ def get_cache_update_time(key: str) -> Optional[str]:
 
 # ============ 基础数据 ============
 
-@retry_on_error(max_retries=3, delay=3)
+@retry_on_error(max_retries=2, delay=2)
 def get_stock_list() -> pd.DataFrame:
-    """获取全部A股代码和名称"""
+    """获取全部A股代码和名称，失败时使用备用文件"""
+    # 优先使用缓存
     cached = cache_get("stock_list", 24)
     if cached is not None:
-        logger.info("使用缓存的股票列表")
+        logger.info(f"使用缓存的股票列表: {len(cached)} 只股票")
         return cached
+
+    # 尝试从AKShare获取
     logger.info("从AKShare获取股票列表...")
-    df = safe_akshare_call(ak.stock_info_a_code_name, max_retries=5, delay=3)
-    cache_set("stock_list", df)
-    logger.info(f"获取到 {len(df)} 只股票")
-    return df
+    try:
+        df = safe_akshare_call(ak.stock_info_a_code_name, max_retries=2, delay=2)
+        if df is not None and not df.empty:
+            cache_set("stock_list", df)
+            logger.info(f"成功获取 {len(df)} 只股票")
+            return df
+    except Exception as e:
+        logger.warning(f"AKShare获取失败: {e}, 尝试使用备用文件...")
+
+    # 尝试使用备用文件
+    backup_path = os.path.join(os.path.dirname(__file__), 'stock_list_backup.pkl')
+    if os.path.exists(backup_path):
+        try:
+            with open(backup_path, 'rb') as f:
+                df = pickle.load(f)
+            logger.info(f"使用备用文件: {len(df)} 只股票")
+            # 更新缓存
+            cache_set("stock_list", df)
+            return df
+        except Exception as e:
+            logger.error(f"读取备用文件失败: {e}")
+
+    # 最后尝试一次
+    logger.warning("最后一次尝试从AKShare获取...")
+    df = safe_akshare_call(ak.stock_info_a_code_name, max_retries=1, delay=5)
+    if df is not None and not df.empty:
+        cache_set("stock_list", df)
+        return df
+
+    raise Exception("无法获取股票列表：AKShare连接失败且无备用文件")
 
 
 def get_stock_info(code: str) -> pd.DataFrame:
