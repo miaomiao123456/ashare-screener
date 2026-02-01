@@ -6,6 +6,7 @@ import sys
 import json
 import logging
 import threading
+import uuid
 from datetime import datetime
 from flask import Flask, render_template, jsonify, request
 
@@ -23,10 +24,12 @@ app = Flask(__name__, template_folder='templates')
 # ============ 全局筛选状态 ============
 screening_state = {
     'is_running': False,
+    'task_id': None,
     'progress': {'message': '', 'stage': '', 'remaining': 0},
     'results': None,
     'error': None
 }
+screening_lock = threading.Lock()
 
 
 # ============ 页面路由 ============
@@ -39,37 +42,60 @@ def index():
 @app.route('/api/screen/start', methods=['POST'])
 def start_screening():
     global screening_state
-    if screening_state['is_running']:
-        return jsonify({'error': '筛选正在进行中'}), 400
 
-    # 获取用户选择的条件
-    data = request.get_json(silent=True) or {}
-    selected_criteria = data.get('criteria', list(range(1, 9)))  # 默认全选
-    logger.info(f"[筛选启动] 用户选择的条件: {selected_criteria}")
+    with screening_lock:
+        # 如果有任务正在运行，标记为取消（新任务会有新的task_id）
+        if screening_state['is_running']:
+            logger.info(f"[任务管理] 检测到新请求，旧任务将被忽略")
 
-    screening_state['is_running'] = True
-    screening_state['progress'] = {'message': '初始化...', 'stage': 'init', 'remaining': 0}
-    screening_state['results'] = None
-    screening_state['error'] = None
+        # 生成新的任务ID
+        task_id = str(uuid.uuid4())[:8]
+
+        # 获取用户选择的条件
+        data = request.get_json(silent=True) or {}
+        selected_criteria = data.get('criteria', list(range(1, 9)))  # 默认全选
+        logger.info(f"[筛选启动] 任务ID: {task_id}, 用户选择的条件: {selected_criteria}")
+
+        # 重置状态
+        screening_state['is_running'] = True
+        screening_state['task_id'] = task_id
+        screening_state['progress'] = {'message': '初始化...', 'stage': 'init', 'remaining': 0}
+        screening_state['results'] = None
+        screening_state['error'] = None
 
     def run():
         global screening_state
+        current_task_id = task_id
         try:
             def progress_cb(info):
-                screening_state['progress'] = info
+                # 只有当前任务才更新进度
+                with screening_lock:
+                    if screening_state['task_id'] == current_task_id:
+                        screening_state['progress'] = info
 
             screener = StockScreener(progress_callback=progress_cb)
             results = screener.screen(selected_criteria=selected_criteria)
-            screening_state['results'] = results
+
+            # 只有当前任务才保存结果
+            with screening_lock:
+                if screening_state['task_id'] == current_task_id:
+                    screening_state['results'] = results
+                    logger.info(f"[任务完成] 任务ID: {current_task_id}")
+                else:
+                    logger.info(f"[任务取消] 任务ID: {current_task_id} 已被新任务替代")
         except Exception as e:
             logger.error(f"Screening failed: {e}", exc_info=True)
-            screening_state['error'] = str(e)
+            with screening_lock:
+                if screening_state['task_id'] == current_task_id:
+                    screening_state['error'] = str(e)
         finally:
-            screening_state['is_running'] = False
+            with screening_lock:
+                if screening_state['task_id'] == current_task_id:
+                    screening_state['is_running'] = False
 
     t = threading.Thread(target=run, daemon=True)
     t.start()
-    return jsonify({'status': 'started'})
+    return jsonify({'status': 'started', 'task_id': task_id})
 
 
 @app.route('/api/screen/progress')

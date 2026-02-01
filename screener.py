@@ -182,13 +182,15 @@ class StockScreener:
     def _run_individual(self, codes: list, check_func, name: str) -> list:
         """多线程逐只检查"""
         passed = []
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        # 增加并发数以提升速度
+        max_workers = min(16, len(codes))  # 最多16个线程，或股票数量
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(check_func, c): c for c in codes}
             done = 0
             for future in as_completed(futures):
                 code = futures[future]
                 done += 1
-                if done % 10 == 0:
+                if done % 20 == 0 or done == len(codes):  # 每20个更新一次进度
                     self._report(f"{name}: 已检查 {done}/{len(codes)}", name, len(codes) - done)
                 try:
                     if future.result():
