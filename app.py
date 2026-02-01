@@ -45,6 +45,7 @@ def start_screening():
     # 获取用户选择的条件
     data = request.get_json(silent=True) or {}
     selected_criteria = data.get('criteria', list(range(1, 9)))  # 默认全选
+    logger.info(f"[筛选启动] 用户选择的条件: {selected_criteria}")
 
     screening_state['is_running'] = True
     screening_state['progress'] = {'message': '初始化...', 'stage': 'init', 'remaining': 0}

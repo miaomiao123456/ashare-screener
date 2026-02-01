@@ -42,6 +42,19 @@ def cache_set(key: str, data: Any):
         logger.warning(f"Cache write failed: {e}")
 
 
+def get_cache_update_time(key: str) -> Optional[str]:
+    """获取缓存数据的更新时间"""
+    path = _cache_path(key)
+    if not os.path.exists(path):
+        return None
+    try:
+        from datetime import datetime
+        mtime = os.path.getmtime(path)
+        return datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
+    except:
+        return None
+
+
 # ============ 基础数据 ============
 
 def get_stock_list() -> pd.DataFrame:

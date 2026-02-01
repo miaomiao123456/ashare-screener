@@ -60,6 +60,7 @@ class StockScreener:
         if selected_criteria is None:
             selected_criteria = list(range(1, 9))
         selected = set(selected_criteria)
+        logger.info(f"[筛选] 实际执行的条件ID: {sorted(selected)}")
 
         stock_df = df.get_stock_list()
         # 过滤ST、退市、北交所
@@ -76,11 +77,40 @@ class StockScreener:
         total = len(all_codes)
         self._report(f"共获取 {total} 只A股（排除ST/退市）", "init", total)
 
+        # 获取数据日期信息
+        from datetime import datetime
+        data_dates = {
+            'screening_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        }
+
+        # 获取各类数据的更新时间
+        stock_list_time = df.get_cache_update_time("stock_list")
+        if stock_list_time:
+            data_dates['stock_list_update'] = stock_list_time
+
+        # 尝试获取最新财报日期
+        try:
+            if all_codes:
+                sample_code = all_codes[0]
+                sample_profit = df.get_profit_statement(sample_code)
+                if not sample_profit.empty:
+                    latest_report = sample_profit.iloc[0].get('报告日', '')
+                    if latest_report:
+                        data_dates['latest_financial_report'] = str(latest_report)[:10]
+
+                # 获取最新股价数据更新时间
+                price_time = df.get_cache_update_time(f"price_{sample_code}")
+                if price_time:
+                    data_dates['price_data_update'] = price_time
+        except Exception as e:
+            logger.debug(f"获取数据日期信息失败: {e}")
+
         results = {
             'total_initial': total,
             'stages': [],
             'passed': all_codes,
-            'stock_names': {}
+            'stock_names': {},
+            'data_dates': data_dates
         }
 
         # 保存名称映射
@@ -98,6 +128,7 @@ class StockScreener:
             (6, "大股东回购", self._filter_buyback),
         ]
         filters = [(name, func) for cid, name, func in all_batch_filters if cid in selected]
+        logger.info(f"[批量过滤] 将执行 {len(filters)} 个条件: {[n for n, _ in filters]}")
         for name, func in filters:
             before = len(results['passed'])
             self._report(f"正在检查: {name}", name, before)
@@ -126,6 +157,7 @@ class StockScreener:
             (8, "现金>负债", self._check_cash_gt_debt),
         ]
         individual_filters = [(name, func) for cid, name, func in all_individual_filters if cid in selected]
+        logger.info(f"[逐只过滤] 将执行 {len(individual_filters)} 个条件: {[n for n, _ in individual_filters]}")
         for name, func in individual_filters:
             if not results['passed']:
                 break

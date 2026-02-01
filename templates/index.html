@@ -213,9 +213,9 @@ body {
 
 .summary-row {
   display: flex;
+  flex-direction: column;
   gap: 0.75rem;
   margin-bottom: 1rem;
-  flex-wrap: wrap;
 }
 .stat-card {
   flex: 1;
@@ -444,6 +444,16 @@ body {
       <button onclick="selectAll(true)">全选</button>
       <button onclick="selectAll(false)">全不选</button>
       <span style="font-size:0.78rem;color:var(--text2);line-height:2;">勾选需要启用的筛选条件</span>
+    </div>
+    <div style="background: linear-gradient(135deg, #fff3cd, #ffeaa7); border-left: 4px solid #e9c46a; padding: 0.8rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.85rem;">
+      <div style="font-weight: 600; color: #856404; margin-bottom: 0.3rem; display: flex; align-items: center; gap: 0.5rem;">
+        <span style="font-size: 1.1rem;">⚠️</span>
+        <span>筛选逻辑说明</span>
+      </div>
+      <div style="color: #856404; line-height: 1.6;">
+        本筛选器使用 <strong>AND 逻辑(交集)</strong>：只有<strong>同时满足所有选中条件</strong>的股票才会被筛选出来。<br>
+        例如:勾选条件1、2、3,则只有<strong>同时通过</strong>这三个条件的股票才会出现在结果中。
+      </div>
     </div>
     <div class="criteria-list" id="criteriaList">
 
@@ -790,13 +800,40 @@ function resetBtn() {
 function showResults(data) {
   document.getElementById('resultsPanel').classList.add('active');
 
-  // 摘要
+  // 数据日期信息
+  let dateInfoHtml = '';
+  if (data.data_dates) {
+    const dd = data.data_dates;
+    dateInfoHtml = '<div style="background: linear-gradient(135deg, #e8f5e9, #c8e6c9); border-left: 4px solid var(--green); padding: 0.7rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.8rem;">';
+    dateInfoHtml += '<div style="font-weight: 600; color: var(--text); margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.5rem;">';
+    dateInfoHtml += '<span style="font-size: 1rem;">📅</span><span>数据时间</span></div>';
+    dateInfoHtml += '<div style="color: var(--text2); line-height: 1.8; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.3rem;">';
+    if (dd.screening_time) {
+      dateInfoHtml += `<div>🔍 筛选时间: <strong style="color: var(--text);">${dd.screening_time}</strong></div>`;
+    }
+    if (dd.stock_list_update) {
+      dateInfoHtml += `<div>📊 股票列表: <strong style="color: var(--text);">${dd.stock_list_update}</strong></div>`;
+    }
+    if (dd.latest_financial_report) {
+      dateInfoHtml += `<div>💰 最新财报: <strong style="color: var(--text);">${dd.latest_financial_report}</strong></div>`;
+    }
+    if (dd.price_data_update) {
+      dateInfoHtml += `<div>💹 行情更新: <strong style="color: var(--text);">${dd.price_data_update}</strong></div>`;
+    }
+    dateInfoHtml += '</div></div>';
+  }
+
+  // 摘要统计卡片
   const pct = data.total_initial > 0 ? ((data.final_count / data.total_initial) * 100).toFixed(2) : 0;
-  document.getElementById('summaryRow').innerHTML = `
-    <div class="stat-card"><div class="val">${data.total_initial}</div><div class="lbl">初始股票数</div></div>
-    <div class="stat-card"><div class="val" style="color:var(--green)">${data.final_count}</div><div class="lbl">符合条件</div></div>
-    <div class="stat-card"><div class="val" style="color:var(--blue)">${pct}%</div><div class="lbl">通过率</div></div>
+  const summaryCards = `
+    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+      <div class="stat-card"><div class="val">${data.total_initial}</div><div class="lbl">初始股票数</div></div>
+      <div class="stat-card"><div class="val" style="color:var(--green)">${data.final_count}</div><div class="lbl">符合条件</div></div>
+      <div class="stat-card"><div class="val" style="color:var(--blue)">${pct}%</div><div class="lbl">通过率</div></div>
+    </div>
   `;
+
+  document.getElementById('summaryRow').innerHTML = dateInfoHtml + summaryCards;
 
   // 筛选过程
   let stHtml = '';
