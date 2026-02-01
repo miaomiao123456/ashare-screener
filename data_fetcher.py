@@ -40,6 +40,21 @@ def retry_on_error(max_retries=3, delay=2):
     return decorator
 
 
+def safe_akshare_call(func, *args, max_retries=3, delay=2, **kwargs):
+    """安全的AKShare API调用，自动重试"""
+    for attempt in range(max_retries):
+        try:
+            result = func(*args, **kwargs)
+            return result
+        except Exception as e:
+            if attempt == max_retries - 1:
+                logger.error(f"AKShare API {func.__name__} failed after {max_retries} attempts: {e}")
+                raise
+            logger.warning(f"AKShare API {func.__name__} attempt {attempt + 1} failed: {e}, retrying in {delay}s...")
+            time.sleep(delay)
+    return None
+
+
 def _cache_path(key: str) -> str:
     safe = hashlib.md5(key.encode()).hexdigest()
     return os.path.join(CACHE_DIR, f"{safe}.pkl")
@@ -89,7 +104,7 @@ def get_stock_list() -> pd.DataFrame:
         logger.info("使用缓存的股票列表")
         return cached
     logger.info("从AKShare获取股票列表...")
-    df = ak.stock_info_a_code_name()
+    df = safe_akshare_call(ak.stock_info_a_code_name, max_retries=5, delay=3)
     cache_set("stock_list", df)
     logger.info(f"获取到 {len(df)} 只股票")
     return df
@@ -102,7 +117,7 @@ def get_stock_info(code: str) -> pd.DataFrame:
     if cached is not None:
         return cached
     try:
-        df = ak.stock_individual_info_em(symbol=code)
+        df = safe_akshare_call(ak.stock_individual_info_em, symbol=code)
         cache_set(key, df)
         return df
     except Exception as e:
@@ -120,7 +135,7 @@ def get_profit_statement(code: str) -> pd.DataFrame:
         return cached
     stock = f"sh{code}" if code.startswith('6') else f"sz{code}"
     try:
-        df = ak.stock_financial_report_sina(stock=stock, symbol='利润表')
+        df = safe_akshare_call(ak.stock_financial_report_sina, stock=stock, symbol='利润表')
         cache_set(key, df)
         return df
     except Exception as e:
@@ -136,7 +151,7 @@ def get_balance_sheet(code: str) -> pd.DataFrame:
         return cached
     stock = f"sh{code}" if code.startswith('6') else f"sz{code}"
     try:
-        df = ak.stock_financial_report_sina(stock=stock, symbol='资产负债表')
+        df = safe_akshare_call(ak.stock_financial_report_sina, stock=stock, symbol='资产负债表')
         cache_set(key, df)
         return df
     except Exception as e:
@@ -152,7 +167,7 @@ def get_cashflow_statement(code: str) -> pd.DataFrame:
         return cached
     stock = f"sh{code}" if code.startswith('6') else f"sz{code}"
     try:
-        df = ak.stock_financial_report_sina(stock=stock, symbol='现金流量表')
+        df = safe_akshare_call(ak.stock_financial_report_sina, stock=stock, symbol='现金流量表')
         cache_set(key, df)
         return df
     except Exception as e:
@@ -169,7 +184,7 @@ def get_dividend_history(code: str) -> pd.DataFrame:
     if cached is not None:
         return cached
     try:
-        df = ak.stock_fhps_detail_em(symbol=code)
+        df = safe_akshare_call(ak.stock_fhps_detail_em, symbol=code)
         cache_set(key, df)
         return df
     except Exception as e:
@@ -185,7 +200,7 @@ def get_additional_issuance() -> pd.DataFrame:
     if cached is not None:
         return cached
     try:
-        df = ak.stock_qbzf_em()
+        df = safe_akshare_call(ak.stock_qbzf_em)
         cache_set("additional_issuance", df)
         return df
     except Exception as e:
@@ -199,7 +214,7 @@ def get_convertible_bonds() -> pd.DataFrame:
     if cached is not None:
         return cached
     try:
-        df = ak.bond_cov_stock_issue_cninfo()
+        df = safe_akshare_call(ak.bond_cov_stock_issue_cninfo)
         cache_set("conv_bonds", df)
         return df
     except Exception as e:
@@ -215,7 +230,7 @@ def get_controller_info() -> pd.DataFrame:
     if cached is not None:
         return cached
     try:
-        df = ak.stock_hold_control_cninfo(symbol="全部")
+        df = safe_akshare_call(ak.stock_hold_control_cninfo, symbol="全部")
         cache_set("controller_info", df)
         return df
     except Exception as e:
@@ -230,7 +245,7 @@ def get_shareholder_info(code: str) -> pd.DataFrame:
     if cached is not None:
         return cached
     try:
-        df = ak.stock_main_stock_holder(stock=code)
+        df = safe_akshare_call(ak.stock_main_stock_holder, stock=code)
         cache_set(key, df)
         return df
     except Exception as e:
@@ -246,7 +261,7 @@ def get_buyback_data() -> pd.DataFrame:
     if cached is not None:
         return cached
     try:
-        df = ak.stock_repurchase_em()
+        df = safe_akshare_call(ak.stock_repurchase_em)
         cache_set("buyback_data", df)
         return df
     except Exception as e:
@@ -262,7 +277,7 @@ def get_pledge_data() -> pd.DataFrame:
     if cached is not None:
         return cached
     try:
-        df = ak.stock_gpzy_pledge_ratio_detail_em()
+        df = safe_akshare_call(ak.stock_gpzy_pledge_ratio_detail_em)
         cache_set("pledge_data", df)
         return df
     except Exception as e:
@@ -279,7 +294,8 @@ def get_kline(code: str, start_date: str = "20200101", end_date: str = "20261231
     if cached is not None:
         return cached
     try:
-        df = ak.stock_zh_a_hist(
+        df = safe_akshare_call(
+            ak.stock_zh_a_hist,
             symbol=code, period="daily",
             start_date=start_date, end_date=end_date,
             adjust="qfq"
