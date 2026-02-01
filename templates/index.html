@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>A股优质股票筛选器</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+/* ===== CSS Variables ===== */
+:root {
+  --red: #e63946;
+  --red-dark: #c1121f;
+  --blue: #457b9d;
+  --blue-dark: #1d3557;
+  --green: #2a9d8f;
+  --gold: #e9c46a;
+  --bg: #f0f2f5;
+  --card: #ffffff;
+  --text: #1d3557;
+  --text2: #6c757d;
+  --radius: 12px;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== Header ===== */
+.header {
+  background: linear-gradient(135deg, var(--red) 0%, var(--blue-dark) 100%);
+  color: #fff;
+  padding: 1.5rem 1rem;
+  text-align: center;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.header h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: 1px; }
+.header .sub { font-size: 0.8rem; opacity: 0.85; margin-top: 4px; }
+
+/* ===== Main ===== */
+.main { padding: 1rem; max-width: 1100px; margin: 0 auto; }
+
+/* ===== Panel ===== */
+.panel {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+.panel-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--red);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ===== Criteria List ===== */
+.criteria-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+.criterion-item {
+  background: var(--bg);
+  border-radius: 8px;
+  border-left: 3px solid var(--green);
+  overflow: hidden;
+}
+.criterion-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 0.8rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+.criterion-header:hover { background: #e4e7eb; }
+/* checkbox */
+.criterion-cb {
+  width: 18px; height: 18px;
+  accent-color: var(--red);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.criterion-item.disabled { opacity: 0.5; }
+.criterion-item.disabled .criterion-header { cursor: default; }
+.select-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.select-actions button {
+  padding: 0.35rem 0.8rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 0.78rem;
+  cursor: pointer;
+  color: var(--text);
+  transition: all 0.15s;
+}
+.select-actions button:hover { border-color: var(--red); color: var(--red); }
+.criterion-header .num {
+  width: 22px; height: 22px;
+  background: var(--green);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.criterion-header .title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  flex: 1;
+}
+.criterion-header .arrow {
+  font-size: 0.7rem;
+  color: var(--text2);
+  transition: transform 0.2s;
+}
+.criterion-item.open .arrow { transform: rotate(180deg); }
+.criterion-detail {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+.criterion-item.open .criterion-detail { max-height: 600px; }
+.criterion-detail-inner {
+  padding: 0 0.8rem 0.8rem 2.8rem;
+  font-size: 0.78rem;
+  color: var(--text2);
+  line-height: 1.7;
+}
+.criterion-detail-inner .logic-label {
+  color: var(--blue-dark);
+  font-weight: 600;
+  font-size: 0.76rem;
+  margin-top: 0.3rem;
+  display: block;
+}
+.criterion-detail-inner .logic-formula {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  margin: 0.3rem 0;
+  font-family: 'Menlo', 'Consolas', monospace;
+  font-size: 0.74rem;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.criterion-detail-inner .note {
+  color: var(--red);
+  font-size: 0.74rem;
+  margin-top: 0.2rem;
+}
+
+/* ===== Button ===== */
+.btn {
+  width: 100%;
+  padding: 0.9rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-primary { background: var(--red); color: #fff; }
+.btn-primary:hover { background: var(--red-dark); transform: translateY(-1px); }
+.btn-primary:disabled { background: var(--text2); cursor: not-allowed; transform: none; }
+
+/* ===== Progress ===== */
+.progress-wrap { margin-top: 1rem; display: none; }
+.progress-wrap.active { display: block; }
+.progress-bar {
+  height: 6px;
+  background: #e0e0e0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--red), var(--blue));
+  width: 0%;
+  transition: width 0.4s ease;
+  border-radius: 3px;
+}
+.progress-text { font-size: 0.82rem; color: var(--text2); margin-top: 0.4rem; }
+
+/* ===== Results ===== */
+.results { display: none; }
+.results.active { display: block; }
+
+.summary-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.stat-card {
+  flex: 1;
+  min-width: 80px;
+  text-align: center;
+  padding: 0.8rem;
+  background: var(--bg);
+  border-radius: 8px;
+}
+.stat-card .val { font-size: 1.6rem; font-weight: 700; color: var(--red); }
+.stat-card .lbl { font-size: 0.75rem; color: var(--text2); }
+
+/* ===== Stage List ===== */
+.stages { margin-bottom: 1rem; }
+.stage-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--bg);
+  font-size: 0.85rem;
+}
+.stage-row .name { font-weight: 500; }
+.stage-row .nums { color: var(--text2); }
+.stage-row .nums .elim { color: var(--red); font-weight: 600; }
+
+/* ===== Stock Grid ===== */
+.stock-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.6rem;
+}
+.stock-card {
+  padding: 0.8rem;
+  background: var(--bg);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+  border: 2px solid transparent;
+}
+.stock-card:hover { border-color: var(--red); transform: translateY(-2px); box-shadow: var(--shadow); }
+.stock-card:active { transform: scale(0.97); }
+.stock-card .code { font-weight: 700; color: var(--red); font-size: 0.95rem; }
+.stock-card .name { font-size: 0.82rem; color: var(--text2); margin-top: 2px; }
+
+/* ===== Modal ===== */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 200;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.modal-overlay.active { display: flex; justify-content: center; align-items: flex-start; }
+.modal {
+  background: var(--card);
+  width: 100%;
+  max-width: 960px;
+  margin: 1rem;
+  border-radius: var(--radius);
+  overflow: hidden;
+  position: relative;
+}
+.modal-header {
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, var(--blue-dark), var(--blue));
+  color: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.modal-header h2 { font-size: 1.15rem; }
+.modal-header .price { font-size: 1.3rem; font-weight: 700; }
+.modal-header .sector-tag {
+  display: inline-block;
+  background: rgba(255,255,255,0.2);
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  margin-top: 4px;
+}
+.modal-close {
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: #fff;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  font-size: 1.2rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ===== Tabs ===== */
+.tabs {
+  display: flex;
+  border-bottom: 2px solid var(--bg);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.tab-btn {
+  flex: 1;
+  padding: 0.75rem 0.5rem;
+  background: none;
+  border: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text2);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+.tab-btn.active { color: var(--red); border-bottom-color: var(--red); }
+.tab-pane { display: none; padding: 1rem; }
+.tab-pane.active { display: block; }
+
+/* ===== Chart ===== */
+.chart-box { width: 100%; height: 420px; }
+
+/* ===== Financial Tables ===== */
+.fin-section { margin-bottom: 1.5rem; }
+.fin-section h3 { font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--blue-dark); }
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.fin-table {
+  width: 100%;
+  min-width: 500px;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.fin-table th, .fin-table td {
+  padding: 0.5rem 0.6rem;
+  text-align: right;
+  border-bottom: 1px solid var(--bg);
+}
+.fin-table th {
+  background: var(--bg);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.fin-table td:first-child, .fin-table th:first-child {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  background: var(--card);
+  font-weight: 500;
+  z-index: 2;
+}
+.fin-table th:first-child { background: var(--bg); z-index: 3; }
+
+/* growth charts in financials */
+.growth-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+.growth-chart-box { height: 260px; }
+
+/* ===== Shareholder Table ===== */
+.sh-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.sh-table th, .sh-table td { padding: 0.5rem; border-bottom: 1px solid var(--bg); text-align: left; }
+.sh-table th { background: var(--bg); font-weight: 600; }
+.sh-soe { color: var(--red); font-weight: 600; }
+
+/* ===== Dividend ===== */
+.div-chart-box { height: 280px; margin-bottom: 1rem; }
+
+/* ===== Loading ===== */
+.loading {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text2);
+}
+.spinner {
+  width: 32px; height: 32px;
+  border: 3px solid var(--bg);
+  border-top-color: var(--red);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 0.8rem;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== Footer ===== */
+.footer {
+  text-align: center;
+  padding: 1rem;
+  font-size: 0.75rem;
+  color: var(--text2);
+}
+
+/* ===== Mobile ===== */
+@media (max-width: 768px) {
+  .header h1 { font-size: 1.2rem; }
+  .criterion-detail-inner { padding-left: 2.2rem; }
+  .stock-grid { grid-template-columns: repeat(2, 1fr); }
+  .chart-box { height: 320px; }
+  .modal { margin: 0; border-radius: var(--radius) var(--radius) 0 0; margin-top: auto; max-height: 92vh; overflow-y: auto; }
+  .modal-overlay.active { align-items: flex-end; }
+  .growth-charts { grid-template-columns: 1fr; }
+  .growth-chart-box { height: 220px; }
+}
+@media (max-width: 480px) {
+  .main { padding: 0.5rem; }
+  .panel { padding: 1rem; }
+  .criterion-detail-inner .logic-formula { font-size: 0.7rem; }
+  .stat-card .val { font-size: 1.3rem; }
+}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <h1>A股优质股票筛选器</h1>
+  <div class="sub">8大财务指标 | 价值投资筛选工具</div>
+</header>
+
+<main class="main">
+  <!-- 筛选面板 -->
+  <section class="panel">
+    <div class="panel-title">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+      筛选条件
+    </div>
+    <div class="select-actions">
+      <button onclick="selectAll(true)">全选</button>
+      <button onclick="selectAll(false)">全不选</button>
+      <span style="font-size:0.78rem;color:var(--text2);line-height:2;">勾选需要启用的筛选条件</span>
+    </div>
+    <div class="criteria-list" id="criteriaList">
+
+      <div class="criterion-item" data-id="1">
+        <div class="criterion-header">
+          <input type="checkbox" class="criterion-cb" checked data-id="1" onclick="event.stopPropagation()">
+          <span class="num">1</span>
+          <span class="title" onclick="toggleCriterion(this.closest('.criterion-item'))">连续3年年报营收净利增长</span>
+          <span class="arrow" onclick="toggleCriterion(this.closest('.criterion-item'))">&#9660;</span>
+        </div>
+        <div class="criterion-detail"><div class="criterion-detail-inner">
+          <span class="logic-label">数据来源</span>
+          利润表（年报，报告期以12月31日结尾）
+          <span class="logic-label">时间窗口</span>
+          考虑年报披露延迟：5月之后取上一年年报，4月及之前取前两年年报。共取最近4年年报。
+          <span class="logic-label">判断公式</span>
+          <div class="logic-formula">Year1营收 > Year2营收 > Year3营收 > Year4营收
+Year1净利 > Year2净利 > Year3净利 > Year4净利
+且每年基数 > 0（排除亏损转盈利）</div>
+          <div class="note">* 如年报数据不足4年或年份不连续，视为不通过</div>
+        </div></div>
+      </div>
+
+      <div class="criterion-item" data-id="2">
+        <div class="criterion-header">
+          <input type="checkbox" class="criterion-cb" checked data-id="2" onclick="event.stopPropagation()">
+          <span class="num">2</span>
+          <span class="title" onclick="toggleCriterion(this.closest('.criterion-item'))">季报营收净利同比环比增长</span>
+          <span class="arrow" onclick="toggleCriterion(this.closest('.criterion-item'))">&#9660;</span>
+        </div>
+        <div class="criterion-detail"><div class="criterion-detail-inner">
+          <span class="logic-label">数据来源</span>
+          利润表（最近8个季度报告）
+          <span class="logic-label">同比逻辑</span>
+          <div class="logic-formula">本季营收 > 去年同季营收（如2024Q3 vs 2023Q3）
+本季净利 > 去年同季净利
+去年同季基数必须 > 0</div>
+          <span class="logic-label">环比逻辑</span>
+          <div class="logic-formula">本季营收 > 上一季营收（如Q3 vs Q2，Q1 vs 上年Q4）
+本季净利 > 上一季净利
+上一季基数必须 > 0</div>
+          <div class="note">* 要求同比+环比同时满足，营收和净利润四项全部正增长</div>
+        </div></div>
+      </div>
+
+      <div class="criterion-item" data-id="3">
+        <div class="criterion-header">
+          <input type="checkbox" class="criterion-cb" checked data-id="3" onclick="event.stopPropagation()">
+          <span class="num">3</span>
+          <span class="title" onclick="toggleCriterion(this.closest('.criterion-item'))">连续5年现金分红，无增发发债</span>
+          <span class="arrow" onclick="toggleCriterion(this.closest('.criterion-item'))">&#9660;</span>
+        </div>
+        <div class="criterion-detail"><div class="criterion-detail-inner">
+          <span class="logic-label">分红检查</span>
+          <div class="logic-formula">检查过去5个完整财年的分红记录（用bonus_year字段）
+每年都有 cash_before_tax > 0（每股税前现金分红）
+考虑分红次年实施的延迟：
+  7月后检查 year-1 ~ year-5
+  7月前检查 year-2 ~ year-6</div>
+          <span class="logic-label">增发检查</span>
+          <div class="logic-formula">5年内无定向增发 / 公开增发记录
+查 STK_CAPITAL_CHANGE 表，change_reason_id ∈ [303,304,305,306]</div>
+          <span class="logic-label">发债检查</span>
+          <div class="logic-formula">5年内无可转债发行记录
+查 CONBOND_BASIC_INFO 表，list_date >= 五年前</div>
+        </div></div>
+      </div>
+
+      <div class="criterion-item" data-id="4">
+        <div class="criterion-header">
+          <input type="checkbox" class="criterion-cb" checked data-id="4" onclick="event.stopPropagation()">
+          <span class="num">4</span>
+          <span class="title" onclick="toggleCriterion(this.closest('.criterion-item'))">股息率 > 4%</span>
+          <span class="arrow" onclick="toggleCriterion(this.closest('.criterion-item'))">&#9660;</span>
+        </div>
+        <div class="criterion-detail"><div class="criterion-detail-inner">
+          <span class="logic-label">计算公式</span>
+          <div class="logic-formula">股息率 = 过去12个月每股现金分红(税前) / 当前股价 × 100%</div>
+          <span class="logic-label">取数逻辑</span>
+          <div class="logic-formula">当前股价 = 最新收盘价
+分红 = 股权登记日在过去12个月内的所有分红记录之和
+  使用 a_registration_date 字段限定时间范围
+  使用 cash_before_tax 字段（每股税前派息）</div>
+          <div class="note">* 要求股息率 >= 4.0%，股价和分红缺失则不通过</div>
+        </div></div>
+      </div>
+
+      <div class="criterion-item" data-id="5">
+        <div class="criterion-header">
+          <input type="checkbox" class="criterion-cb" checked data-id="5" onclick="event.stopPropagation()">
+          <span class="num">5</span>
+          <span class="title" onclick="toggleCriterion(this.closest('.criterion-item'))">前二大股东是央国企</span>
+          <span class="arrow" onclick="toggleCriterion(this.closest('.criterion-item'))">&#9660;</span>
+        </div>
+        <div class="criterion-detail"><div class="criterion-detail-inner">
+          <span class="logic-label">数据来源</span>
+          十大股东数据（STK_SHAREHOLDER_TOP10），取最新一期报告
+          <span class="logic-label">判断逻辑</span>
+          <div class="logic-formula">取最新一期 shareholder_rank = 1 和 2 的股东名称
+两者名称都包含央国企关键词 → 通过</div>
+          <span class="logic-label">央国企关键词</span>
+          <div class="logic-formula">国有、国资、财政局/厅、国投、中央、省/市人民政府、
+财政部、国务院、中央汇金、社保基金、SASAC、
+国有独资、国有资产、管理委员会、
+中国石油/石化/移动/电信/联通/国家电网 等央企名称</div>
+          <div class="note">* 前一版只查实控人，已修正为查十大股东前两位</div>
+        </div></div>
+      </div>
+
+      <div class="criterion-item" data-id="6">
+        <div class="criterion-header">
+          <input type="checkbox" class="criterion-cb" checked data-id="6" onclick="event.stopPropagation()">
+          <span class="num">6</span>
+          <span class="title" onclick="toggleCriterion(this.closest('.criterion-item'))">大股东主动回购股票</span>
+          <span class="arrow" onclick="toggleCriterion(this.closest('.criterion-item'))">&#9660;</span>
+        </div>
+        <div class="criterion-detail"><div class="criterion-detail-inner">
+          <span class="logic-label">数据来源</span>
+          股票回购数据（STK_SHARES_REPURCHASE）
+          <span class="logic-label">判断逻辑</span>
+          <div class="logic-formula">检查近2年内是否存在回购记录
+回购状态(repurchase_state)为以下之一即通过：
+  已完成 / 实施中 / 已实施 / 董事会预案 / 股东大会通过</div>
+          <div class="note">* 仅已公告但未实施的不计入</div>
+        </div></div>
+      </div>
+
+      <div class="criterion-item" data-id="7">
+        <div class="criterion-header">
+          <input type="checkbox" class="criterion-cb" checked data-id="7" onclick="event.stopPropagation()">
+          <span class="num">7</span>
+          <span class="title" onclick="toggleCriterion(this.closest('.criterion-item'))">实控人未变更</span>
+          <span class="arrow" onclick="toggleCriterion(this.closest('.criterion-item'))">&#9660;</span>
+        </div>
+        <div class="criterion-detail"><div class="criterion-detail-inner">
+          <span class="logic-label">数据来源</span>
+          实际控制人信息（STK_CONTROLLER_INFO）
+          <span class="logic-label">判断逻辑</span>
+          <div class="logic-formula">获取近3年所有实际控制人记录
+controller_name 去重后：
+  唯一值 <= 1 → 通过（未变更）
+  唯一值 >  1 → 不通过（发生变更）
+  无记录 → 视为稳定（通过）</div>
+        </div></div>
+      </div>
+
+      <div class="criterion-item" data-id="8">
+        <div class="criterion-header">
+          <input type="checkbox" class="criterion-cb" checked data-id="8" onclick="event.stopPropagation()">
+          <span class="num">8</span>
+          <span class="title" onclick="toggleCriterion(this.closest('.criterion-item'))">货币资金 > 有息负债总和</span>
+          <span class="arrow" onclick="toggleCriterion(this.closest('.criterion-item'))">&#9660;</span>
+        </div>
+        <div class="criterion-detail"><div class="criterion-detail-inner">
+          <span class="logic-label">计算公式</span>
+          <div class="logic-formula">有息负债 = 短期借款 + 长期借款 + 应付债券 + 一年内到期非流动负债
+要求：货币资金 > 有息负债</div>
+          <span class="logic-label">质押检查</span>
+          <div class="logic-formula">查 STK_HOLDER_PLEDGE 表，取最新质押比例(pledge_ratio)
+质押比例 > 30% → 直接排除（风险过高）</div>
+          <span class="logic-label">数据来源</span>
+          资产负债表最新一期（cash_equivalents / shortterm_loan / longterm_loan / bonds_payable / non_current_liability_in_one_year）
+          <div class="note">* 前一版缺少"一年内到期非流动负债"，已修正补充</div>
+        </div></div>
+      </div>
+
+    </div>
+    <button class="btn btn-primary" id="btnStart" onclick="startScreening()">开始筛选</button>
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-text" id="progressText">正在初始化...</div>
+    </div>
+  </section>
+
+  <!-- 筛选结果 -->
+  <section class="panel results" id="resultsPanel">
+    <div class="panel-title">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      筛选结果
+    </div>
+    <div class="summary-row" id="summaryRow"></div>
+    <div class="stages" id="stagesDiv"></div>
+    <div class="stock-grid" id="stockGrid"></div>
+  </section>
+</main>
+
+<!-- 详情弹窗 -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-header" id="modalHeader">
+      <div>
+        <h2 id="modalTitle">--</h2>
+        <span class="sector-tag" id="modalSector">--</span>
+      </div>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="chart" onclick="switchTab('chart')">行情走势</button>
+      <button class="tab-btn" data-tab="financials" onclick="switchTab('financials')">财务数据</button>
+      <button class="tab-btn" data-tab="shareholders" onclick="switchTab('shareholders')">股东信息</button>
+      <button class="tab-btn" data-tab="dividend" onclick="switchTab('dividend')">分红记录</button>
+    </div>
+
+    <!-- 行情走势 -->
+    <div class="tab-pane active" id="pane-chart">
+      <div class="chart-box" id="klineChart"></div>
+    </div>
+
+    <!-- 财务数据 -->
+    <div class="tab-pane" id="pane-financials">
+      <div class="growth-charts">
+        <div class="growth-chart-box" id="revenueGrowthChart"></div>
+        <div class="growth-chart-box" id="profitGrowthChart"></div>
+      </div>
+      <div id="financialTables">
+        <div class="loading"><div class="spinner"></div>加载中...</div>
+      </div>
+    </div>
+
+    <!-- 股东信息 -->
+    <div class="tab-pane" id="pane-shareholders">
+      <div id="shareholderContent">
+        <div class="loading"><div class="spinner"></div>加载中...</div>
+      </div>
+    </div>
+
+    <!-- 分红记录 -->
+    <div class="tab-pane" id="pane-dividend">
+      <div class="div-chart-box" id="dividendChart"></div>
+      <div id="dividendTable"></div>
+    </div>
+  </div>
+</div>
+
+<footer class="footer">
+  数据来源：AKShare | 仅供参考，不构成投资建议
+</footer>
+
+<script>
+/* ===== 条件展开/收起 ===== */
+function toggleCriterion(el) {
+  el.classList.toggle('open');
+}
+
+/* ===== 全选/全不选 ===== */
+function selectAll(checked) {
+  document.querySelectorAll('.criterion-cb').forEach(cb => { cb.checked = checked; });
+}
+
+function getSelectedCriteria() {
+  const selected = [];
+  document.querySelectorAll('.criterion-cb:checked').forEach(cb => {
+    selected.push(parseInt(cb.dataset.id));
+  });
+  return selected;
+}
+
+/* ===== 全局状态 ===== */
+let currentCode = null;
+let chartInstances = {};
+let screenResults = null;
+
+/* ===== 筛选控制 ===== */
+async function startScreening() {
+  const selected = getSelectedCriteria();
+  if (selected.length === 0) {
+    alert('请至少选择一个筛选条件');
+    return;
+  }
+  const btn = document.getElementById('btnStart');
+  btn.disabled = true;
+  btn.textContent = '筛选中...';
+  document.getElementById('progressWrap').classList.add('active');
+  document.getElementById('resultsPanel').classList.remove('active');
+
+  try {
+    await fetch('/api/screen/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ criteria: selected })
+    });
+    pollProgress();
+  } catch (e) {
+    alert('启动筛选失败: ' + e.message);
+    resetBtn();
+  }
+}
+
+function pollProgress() {
+  fetch('/api/screen/progress')
+    .then(r => r.json())
+    .then(data => {
+      const p = data.progress || {};
+      document.getElementById('progressText').textContent = p.message || '处理中...';
+      // 模拟进度
+      const fill = document.getElementById('progressFill');
+      const curr = parseFloat(fill.style.width) || 5;
+      fill.style.width = Math.min(curr + 2, 95) + '%';
+
+      if (data.error) {
+        document.getElementById('progressText').textContent = '筛选出错: ' + data.error;
+        resetBtn();
+        return;
+      }
+      if (data.is_running) {
+        setTimeout(pollProgress, 1500);
+      } else {
+        fill.style.width = '100%';
+        fetchResults();
+      }
+    })
+    .catch(() => setTimeout(pollProgress, 2000));
+}
+
+function fetchResults() {
+  fetch('/api/screen/results')
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        document.getElementById('progressText').textContent = data.error;
+        resetBtn();
+        return;
+      }
+      screenResults = data;
+      showResults(data);
+      resetBtn();
+    })
+    .catch(e => {
+      document.getElementById('progressText').textContent = '获取结果失败';
+      resetBtn();
+    });
+}
+
+function resetBtn() {
+  const btn = document.getElementById('btnStart');
+  btn.disabled = false;
+  btn.textContent = '重新筛选';
+  setTimeout(() => {
+    document.getElementById('progressWrap').classList.remove('active');
+  }, 1000);
+}
+
+/* ===== 展示结果 ===== */
+function showResults(data) {
+  document.getElementById('resultsPanel').classList.add('active');
+
+  // 摘要
+  const pct = data.total_initial > 0 ? ((data.final_count / data.total_initial) * 100).toFixed(2) : 0;
+  document.getElementById('summaryRow').innerHTML = `
+    <div class="stat-card"><div class="val">${data.total_initial}</div><div class="lbl">初始股票数</div></div>
+    <div class="stat-card"><div class="val" style="color:var(--green)">${data.final_count}</div><div class="lbl">符合条件</div></div>
+    <div class="stat-card"><div class="val" style="color:var(--blue)">${pct}%</div><div class="lbl">通过率</div></div>
+  `;
+
+  // 筛选过程
+  let stHtml = '';
+  (data.stages || []).forEach(s => {
+    stHtml += `<div class="stage-row">
+      <span class="name">${s.criterion}</span>
+      <span class="nums">${s.before} &rarr; ${s.after} <span class="elim">(-${s.eliminated})</span></span>
+    </div>`;
+  });
+  document.getElementById('stagesDiv').innerHTML = stHtml;
+
+  // 股票卡片
+  let gridHtml = '';
+  const names = data.stock_names || {};
+  (data.passed || []).forEach(code => {
+    const name = names[code] || '--';
+    gridHtml += `<div class="stock-card" onclick="openDetail('${code}')">
+      <div class="code">${code}</div>
+      <div class="name">${name}</div>
+    </div>`;
+  });
+  if (!data.passed || data.passed.length === 0) {
+    gridHtml = '<div style="text-align:center;padding:2rem;color:var(--text2);grid-column:1/-1;">暂无符合全部条件的股票，您可以尝试放宽部分条件</div>';
+  }
+  document.getElementById('stockGrid').innerHTML = gridHtml;
+}
+
+/* ===== 详情弹窗 ===== */
+function openDetail(code) {
+  currentCode = code;
+  document.getElementById('modalOverlay').classList.add('active');
+  document.body.style.overflow = 'hidden';
+
+  // 设置标题
+  const names = screenResults?.stock_names || {};
+  document.getElementById('modalTitle').textContent = `${code} ${names[code] || ''}`;
+
+  // 清空之前内容
+  destroyCharts();
+  document.getElementById('financialTables').innerHTML = '<div class="loading"><div class="spinner"></div>加载中...</div>';
+  document.getElementById('shareholderContent').innerHTML = '<div class="loading"><div class="spinner"></div>加载中...</div>';
+  document.getElementById('dividendTable').innerHTML = '';
+
+  // 切换到第一个tab
+  switchTab('chart');
+
+  // 并行加载数据
+  loadSectorInfo(code);
+  loadKline(code);
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('active');
+  document.body.style.overflow = '';
+  destroyCharts();
+  currentCode = null;
+}
+
+function destroyCharts() {
+  Object.values(chartInstances).forEach(c => { try { c.dispose(); } catch(e) {} });
+  chartInstances = {};
+}
+
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + tabId));
+
+  // 懒加载数据
+  if (tabId === 'chart' && currentCode) {
+    setTimeout(() => { if (chartInstances.kline) chartInstances.kline.resize(); }, 100);
+  }
+  if (tabId === 'financials' && currentCode) loadFinancials(currentCode);
+  if (tabId === 'shareholders' && currentCode) loadShareholders(currentCode);
+  if (tabId === 'dividend' && currentCode) loadDividend(currentCode);
+}
+
+/* ===== 数据加载 ===== */
+async function loadSectorInfo(code) {
+  try {
+    const r = await fetch(`/api/stock/${code}/sector`);
+    const d = await r.json();
+    document.getElementById('modalSector').textContent = d.industry || '未知行业';
+  } catch (e) {
+    document.getElementById('modalSector').textContent = '--';
+  }
+}
+
+async function loadKline(code) {
+  const container = document.getElementById('klineChart');
+  container.innerHTML = '<div class="loading"><div class="spinner"></div>加载K线数据...</div>';
+  try {
+    const r = await fetch(`/api/stock/${code}/kline?start=20200101`);
+    const data = await r.json();
+    if (!data.dates || data.dates.length === 0) {
+      container.innerHTML = '<div class="loading">暂无行情数据</div>';
+      return;
+    }
+    container.innerHTML = '';
+    renderKline(container, data);
+  } catch (e) {
+    container.innerHTML = '<div class="loading">加载失败</div>';
+  }
+}
+
+async function loadFinancials(code) {
+  const tablesDiv = document.getElementById('financialTables');
+  // 避免重复加载
+  if (tablesDiv.dataset.loaded === code) return;
+  tablesDiv.innerHTML = '<div class="loading"><div class="spinner"></div>加载财务数据...</div>';
+
+  try {
+    const r = await fetch(`/api/stock/${code}/financials`);
+    const data = await r.json();
+    tablesDiv.dataset.loaded = code;
+
+    // 绘制增长趋势图
+    renderGrowthCharts(data.profit || []);
+
+    let html = '';
+
+    // 利润表
+    if (data.profit && data.profit.length > 0) {
+      html += buildFinTable('利润表', data.profit, [
+        '报告日', '营业总收入', '营业总成本', '营业利润', '利润总额', '净利润'
+      ]);
+    }
+
+    // 资产负债表
+    if (data.balance && data.balance.length > 0) {
+      html += buildFinTable('资产负债表', data.balance, [
+        '报告日', '货币资金', '应收账款', '存货', '总资产',
+        '短期借款', '长期借款', '应付债券', '总负债', '股东权益合计'
+      ]);
+    }
+
+    // 现金流量表
+    if (data.cashflow && data.cashflow.length > 0) {
+      html += buildFinTable('现金流量表', data.cashflow, [
+        '报告日', '经营活动产生的现金流量净额', '投资活动产生的现金流量净额',
+        '筹资活动产生的现金流量净额', '现金及现金等价物净增加额'
+      ]);
+    }
+
+    tablesDiv.innerHTML = html || '<div class="loading">暂无财务数据</div>';
+  } catch (e) {
+    tablesDiv.innerHTML = '<div class="loading">加载失败</div>';
+  }
+}
+
+function buildFinTable(title, rows, fields) {
+  // 找出实际存在的字段
+  const existing = fields.filter(f => rows.some(r => r[f] !== undefined && r[f] !== null));
+  if (existing.length === 0) return '';
+
+  let html = `<div class="fin-section"><h3>${title}</h3><div class="table-wrap"><table class="fin-table"><thead><tr>`;
+  existing.forEach(f => { html += `<th>${f === '报告日' ? '报告期' : f}</th>`; });
+  html += '</tr></thead><tbody>';
+
+  rows.forEach(row => {
+    html += '<tr>';
+    existing.forEach(f => {
+      let val = row[f];
+      if (f === '报告日') {
+        html += `<td>${String(val || '').substring(0, 10)}</td>`;
+      } else {
+        val = parseFloat(val) || 0;
+        html += `<td>${formatNum(val)}</td>`;
+      }
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table></div></div>';
+  return html;
+}
+
+function formatNum(n) {
+  if (Math.abs(n) >= 1e8) return (n / 1e8).toFixed(2) + '亿';
+  if (Math.abs(n) >= 1e4) return (n / 1e4).toFixed(2) + '万';
+  return n.toFixed(2);
+}
+
+async function loadShareholders(code) {
+  const div = document.getElementById('shareholderContent');
+  if (div.dataset.loaded === code) return;
+  div.innerHTML = '<div class="loading"><div class="spinner"></div>加载股东数据...</div>';
+
+  try {
+    const r = await fetch(`/api/stock/${code}/shareholders`);
+    const data = await r.json();
+    div.dataset.loaded = code;
+
+    if (!data || data.length === 0) {
+      div.innerHTML = '<div class="loading">暂无股东数据</div>';
+      return;
+    }
+
+    // 获取显示用的列
+    const cols = Object.keys(data[0]).filter(k => !k.startsWith('_'));
+    let html = '<div class="table-wrap"><table class="sh-table"><thead><tr>';
+    cols.forEach(c => { html += `<th>${c}</th>`; });
+    html += '</tr></thead><tbody>';
+
+    data.forEach(row => {
+      html += '<tr>';
+      cols.forEach(c => {
+        const val = String(row[c] || '');
+        const isSoe = c.includes('股东') && isSoeText(val);
+        html += `<td class="${isSoe ? 'sh-soe' : ''}">${val}</td>`;
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    div.innerHTML = html;
+  } catch (e) {
+    div.innerHTML = '<div class="loading">加载失败</div>';
+  }
+}
+
+function isSoeText(text) {
+  const kws = ['国有', '国资', '财政', '国投', '中央', '政府', '国家'];
+  return kws.some(k => text.includes(k));
+}
+
+async function loadDividend(code) {
+  const chartDiv = document.getElementById('dividendChart');
+  const tableDiv = document.getElementById('dividendTable');
+  if (tableDiv.dataset.loaded === code) return;
+  chartDiv.innerHTML = '';
+  tableDiv.innerHTML = '<div class="loading"><div class="spinner"></div>加载分红数据...</div>';
+
+  try {
+    const r = await fetch(`/api/stock/${code}/dividend`);
+    const data = await r.json();
+    tableDiv.dataset.loaded = code;
+
+    if (!data || data.length === 0) {
+      tableDiv.innerHTML = '<div class="loading">暂无分红数据</div>';
+      return;
+    }
+
+    // 绘制分红图
+    renderDividendChart(chartDiv, data);
+
+    // 表格
+    const cols = Object.keys(data[0]).filter(k => !k.startsWith('_'));
+    let html = '<div class="table-wrap"><table class="fin-table"><thead><tr>';
+    cols.forEach(c => { html += `<th>${c}</th>`; });
+    html += '</tr></thead><tbody>';
+    data.forEach(row => {
+      html += '<tr>';
+      cols.forEach(c => { html += `<td>${row[c] ?? ''}</td>`; });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    tableDiv.innerHTML = html;
+  } catch (e) {
+    tableDiv.innerHTML = '<div class="loading">加载失败</div>';
+  }
+}
+
+/* ===== ECharts 渲染 ===== */
+function renderKline(container, data) {
+  const chart = echarts.init(container);
+  chartInstances.kline = chart;
+
+  const upColor = '#e63946';
+  const downColor = '#00b894';
+
+  chart.setOption({
+    animation: false,
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' },
+      formatter: params => {
+        const k = params.find(p => p.seriesName === 'K线');
+        if (!k) return '';
+        const d = k.data;
+        return `<b>${params[0].axisValue}</b><br/>
+          开盘: ${d[1]}<br/>收盘: ${d[2]}<br/>
+          最低: ${d[3]}<br/>最高: ${d[4]}`;
+      }
+    },
+    grid: [
+      { left: '12%', right: '5%', top: '5%', height: '55%' },
+      { left: '12%', right: '5%', top: '68%', height: '18%' }
+    ],
+    xAxis: [
+      { type: 'category', data: data.dates, boundaryGap: false, axisLine: { onZero: false }, splitLine: { show: false }, min: 'dataMin', max: 'dataMax' },
+      { type: 'category', gridIndex: 1, data: data.dates, boundaryGap: false, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false }, min: 'dataMin', max: 'dataMax' }
+    ],
+    yAxis: [
+      { scale: true, splitArea: { show: true } },
+      { scale: true, gridIndex: 1, splitNumber: 2, axisLabel: { show: false }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false } }
+    ],
+    dataZoom: [
+      { type: 'inside', xAxisIndex: [0, 1], start: 70, end: 100 },
+      { show: true, xAxisIndex: [0, 1], type: 'slider', top: '90%', start: 70, end: 100, height: 20 }
+    ],
+    series: [
+      {
+        name: 'K线',
+        type: 'candlestick',
+        data: data.ohlc,
+        itemStyle: { color: upColor, color0: downColor, borderColor: upColor, borderColor0: downColor }
+      },
+      {
+        name: '成交量',
+        type: 'bar',
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        data: data.volumes.map((v, i) => ({
+          value: v,
+          itemStyle: { color: data.ohlc[i][1] >= data.ohlc[i][0] ? upColor : downColor }
+        }))
+      }
+    ]
+  });
+
+  window.addEventListener('resize', () => chart.resize());
+}
+
+function renderGrowthCharts(profitData) {
+  if (!profitData || profitData.length < 2) return;
+
+  const years = profitData.map(r => String(r['报告日'] || '').substring(0, 4)).reverse();
+  const revenues = profitData.map(r => parseFloat(r['营业总收入']) || 0).reverse();
+  const profits = profitData.map(r => parseFloat(r['净利润']) || 0).reverse();
+
+  // 营收图
+  const revContainer = document.getElementById('revenueGrowthChart');
+  if (revContainer) {
+    const c1 = echarts.init(revContainer);
+    chartInstances.revGrowth = c1;
+    c1.setOption({
+      title: { text: '营业总收入趋势', textStyle: { fontSize: 13 }, left: 'center' },
+      tooltip: { trigger: 'axis', formatter: p => p[0].axisValue + ': ' + formatNum(p[0].value) },
+      xAxis: { type: 'category', data: years },
+      yAxis: { type: 'value', axisLabel: { formatter: v => formatNum(v) } },
+      series: [{ type: 'bar', data: revenues, itemStyle: { color: '#457b9d' }, barWidth: '50%' }],
+      grid: { left: '15%', right: '5%', bottom: '10%', top: '18%' }
+    });
+  }
+
+  // 净利润图
+  const profContainer = document.getElementById('profitGrowthChart');
+  if (profContainer) {
+    const c2 = echarts.init(profContainer);
+    chartInstances.profGrowth = c2;
+    c2.setOption({
+      title: { text: '净利润趋势', textStyle: { fontSize: 13 }, left: 'center' },
+      tooltip: { trigger: 'axis', formatter: p => p[0].axisValue + ': ' + formatNum(p[0].value) },
+      xAxis: { type: 'category', data: years },
+      yAxis: { type: 'value', axisLabel: { formatter: v => formatNum(v) } },
+      series: [{ type: 'bar', data: profits, itemStyle: { color: '#e63946' }, barWidth: '50%' }],
+      grid: { left: '15%', right: '5%', bottom: '10%', top: '18%' }
+    });
+  }
+}
+
+function renderDividendChart(container, data) {
+  if (!data || data.length === 0) return;
+
+  const years = data.map(r => String(r['报告期'] || '').substring(0, 4)).reverse();
+  const cashDiv = data.map(r => {
+    let v = parseFloat(r['现金分红-每股派息'] || r['现金分红-现金分红比例'] || 0);
+    return v;
+  }).reverse();
+
+  const chart = echarts.init(container);
+  chartInstances.dividend = chart;
+  chart.setOption({
+    title: { text: '历年分红', textStyle: { fontSize: 13 }, left: 'center' },
+    tooltip: { trigger: 'axis' },
+    xAxis: { type: 'category', data: years },
+    yAxis: { type: 'value', name: '每10股派息(元)' },
+    series: [{
+      type: 'bar',
+      data: cashDiv,
+      itemStyle: { color: '#2a9d8f' },
+      barWidth: '50%'
+    }],
+    grid: { left: '12%', right: '5%', bottom: '10%', top: '18%' }
+  });
+}
+
+/* ===== 页面初始化 ===== */
+document.addEventListener('DOMContentLoaded', () => {
+  // 检查是否有已有结果
+  fetch('/api/screen/results')
+    .then(r => { if (r.ok) return r.json(); throw new Error(); })
+    .then(data => {
+      if (data && data.passed) {
+        screenResults = data;
+        showResults(data);
+      }
+    })
+    .catch(() => {});
+
+  // 全局 resize
+  window.addEventListener('resize', () => {
+    Object.values(chartInstances).forEach(c => { try { c.resize(); } catch(e) {} });
+  });
+});
+</script>
+</body>
+</html>
