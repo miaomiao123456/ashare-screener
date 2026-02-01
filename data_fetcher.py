@@ -6,14 +6,38 @@ import pickle
 import time
 import hashlib
 import logging
+import socket
 import akshare as ak
 import pandas as pd
 from typing import Optional, Any
+from functools import wraps
+
+# 设置socket默认超时
+socket.setdefaulttimeout(30)
 
 logger = logging.getLogger(__name__)
 
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cache')
 os.makedirs(CACHE_DIR, exist_ok=True)
+
+
+def retry_on_error(max_retries=3, delay=2):
+    """重试装饰器"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        logger.error(f"{func.__name__} failed after {max_retries} attempts: {e}")
+                        raise
+                    logger.warning(f"{func.__name__} attempt {attempt + 1} failed: {e}, retrying...")
+                    time.sleep(delay)
+            return None
+        return wrapper
+    return decorator
 
 
 def _cache_path(key: str) -> str:
@@ -57,13 +81,17 @@ def get_cache_update_time(key: str) -> Optional[str]:
 
 # ============ 基础数据 ============
 
+@retry_on_error(max_retries=3, delay=3)
 def get_stock_list() -> pd.DataFrame:
     """获取全部A股代码和名称"""
     cached = cache_get("stock_list", 24)
     if cached is not None:
+        logger.info("使用缓存的股票列表")
         return cached
+    logger.info("从AKShare获取股票列表...")
     df = ak.stock_info_a_code_name()
     cache_set("stock_list", df)
+    logger.info(f"获取到 {len(df)} 只股票")
     return df
 
 
