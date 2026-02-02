@@ -11,6 +11,7 @@ import pandas as pd
 from typing import Optional, Any
 from functools import wraps
 from datetime import datetime, timedelta
+from threading import Lock
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,32 @@ pro = ts.pro_api()
 
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cache')
 os.makedirs(CACHE_DIR, exist_ok=True)
+
+# API限速：Tushare每分钟200次调用
+_api_call_times = []
+_api_lock = Lock()
+API_RATE_LIMIT = 180  # 每分钟180次，留20次余量
+API_RATE_WINDOW = 60  # 60秒窗口
+
+
+def _rate_limit():
+    """API限速控制"""
+    global _api_call_times
+    with _api_lock:
+        now = time.time()
+        # 清理60秒前的调用记录
+        _api_call_times = [t for t in _api_call_times if now - t < API_RATE_WINDOW]
+
+        # 如果达到限制，等待
+        if len(_api_call_times) >= API_RATE_LIMIT:
+            oldest = _api_call_times[0]
+            wait_time = API_RATE_WINDOW - (now - oldest) + 0.1
+            if wait_time > 0:
+                logger.warning(f"API频率限制，等待 {wait_time:.1f}秒...")
+                time.sleep(wait_time)
+                _api_call_times = []
+
+        _api_call_times.append(now)
 
 
 def retry_on_error(max_retries=3, delay=2):
@@ -43,9 +70,10 @@ def retry_on_error(max_retries=3, delay=2):
 
 
 def safe_tushare_call(func, max_retries=3, delay=1, **kwargs):
-    """安全的Tushare API调用，自动重试"""
+    """安全的Tushare API调用，自动重试和限速"""
     for attempt in range(max_retries):
         try:
+            _rate_limit()  # API限速
             result = func(**kwargs)
             if result is not None and not result.empty:
                 return result
@@ -146,7 +174,7 @@ def get_stock_info(code: str) -> pd.DataFrame:
     返回格式：item, value
     """
     key = f"info_{code}"
-    cached = cache_get(key, 6)
+    cached = cache_get(key, 12)  # 增加缓存到12小时
     if cached is not None:
         return cached
 
@@ -186,12 +214,37 @@ def get_stock_info(code: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def get_financial_indicator(code: str) -> pd.DataFrame:
+    """获取财务指标（包含股息率、ROE等）- 用于快速筛选
+
+    返回最近8个季度的财务指标
+    """
+    key = f"fina_indicator_{code}"
+    cached = cache_get(key, 24)  # 缓存24小时
+    if cached is not None:
+        return cached
+
+    try:
+        ts_code = _convert_code_to_ts(code)
+        # 获取最近8个季度的财务指标
+        df = safe_tushare_call(pro.fina_indicator, ts_code=ts_code,
+                              fields='ts_code,end_date,roe,roa,gross_profit_margin,netprofit_margin,debt_to_assets,current_ratio,quick_ratio')
+
+        if not df.empty:
+            df = df.sort_values('end_date', ascending=False).head(8)
+            cache_set(key, df)
+        return df
+    except Exception as e:
+        logger.debug(f"get_financial_indicator({code}): {e}")
+        return pd.DataFrame()
+
+
 # ============ 财务报表 ============
 
 def get_profit_statement(code: str) -> pd.DataFrame:
     """获取利润表"""
     key = f"profit_{code}"
-    cached = cache_get(key, 12)
+    cached = cache_get(key, 48)  # 增加缓存到48小时
     if cached is not None:
         return cached
 
@@ -221,7 +274,7 @@ def get_profit_statement(code: str) -> pd.DataFrame:
 def get_balance_sheet(code: str) -> pd.DataFrame:
     """获取资产负债表"""
     key = f"balance_{code}"
-    cached = cache_get(key, 12)
+    cached = cache_get(key, 48)  # 增加缓存到48小时
     if cached is not None:
         return cached
 
@@ -251,7 +304,7 @@ def get_balance_sheet(code: str) -> pd.DataFrame:
 def get_cashflow_statement(code: str) -> pd.DataFrame:
     """获取现金流量表"""
     key = f"cashflow_{code}"
-    cached = cache_get(key, 12)
+    cached = cache_get(key, 48)  # 增加缓存到48小时
     if cached is not None:
         return cached
 
@@ -280,7 +333,7 @@ def get_cashflow_statement(code: str) -> pd.DataFrame:
 def get_dividend_history(code: str) -> pd.DataFrame:
     """获取个股分红历史"""
     key = f"dividend_{code}"
-    cached = cache_get(key, 24)
+    cached = cache_get(key, 48)  # 增加缓存到48小时
     if cached is not None:
         return cached
 
