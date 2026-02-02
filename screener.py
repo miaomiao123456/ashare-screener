@@ -182,6 +182,7 @@ class StockScreener:
     def _run_individual(self, codes: list, check_func, name: str) -> list:
         """多线程逐只检查"""
         passed = []
+        skipped = 0  # 统计因API失败跳过的股票数
         # 增加并发数以提升速度
         max_workers = min(16, len(codes))  # 最多16个线程，或股票数量
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -193,10 +194,21 @@ class StockScreener:
                 if done % 20 == 0 or done == len(codes):  # 每20个更新一次进度
                     self._report(f"{name}: 已检查 {done}/{len(codes)}", name, len(codes) - done)
                 try:
-                    if future.result():
+                    result = future.result()
+                    if result is True:
                         passed.append(code)
+                    elif result is None:
+                        # None表示API失败，跳过而不过滤
+                        skipped += 1
+                        passed.append(code)  # 保留该股票，继续后续检查
+                    # result is False表示不符合条件，不添加到passed
                 except Exception as e:
                     logger.warning(f"Check {name} for {code} failed: {e}")
+                    skipped += 1
+                    passed.append(code)  # 异常时也保留，避免误杀
+
+        if skipped > 0:
+            logger.info(f"[{name}] 因API失败跳过 {skipped} 只股票")
         return passed
 
     # ============================
@@ -325,11 +337,19 @@ class StockScreener:
     # ============================
 
     def _check_dividend_yield(self, code: str) -> bool:
-        """股息率 > 4%"""
+        """股息率 > 4%
+
+        Returns:
+            True: 符合条件（股息率>=4%）
+            False: 不符合条件（股息率<4% 或 无分红）
+            None: 无法判断（API失败）
+        """
         try:
             info = df.get_stock_info(code)
             if info.empty:
-                return False
+                logger.debug(f"{code}: 无法获取股票信息，跳过")
+                return None  # API失败，跳过
+
             # 获取最新价
             price = None
             for _, row in info.iterrows():
@@ -337,12 +357,13 @@ class StockScreener:
                     price = _safe_float(row.get('value'))
                     break
             if not price or price <= 0:
-                return False
+                logger.debug(f"{code}: 无法获取有效价格，跳过")
+                return None  # 数据异常，跳过
 
             # 获取最近一年分红
             div_df = df.get_dividend_history(code)
             if div_df.empty:
-                return False
+                return False  # 无分红记录，不符合条件
 
             current_year = datetime.now().year
             total_div = 0.0
@@ -357,25 +378,32 @@ class StockScreener:
                         total_div += per_share
 
             if total_div <= 0:
-                return False
+                return False  # 无现金分红，不符合条件
 
             yield_pct = (total_div / price) * 100
             return yield_pct >= 4.0
         except Exception as e:
             logger.debug(f"dividend_yield check {code}: {e}")
-            return False
+            return None  # 异常时跳过，避免误杀
 
     def _check_3year_growth(self, code: str) -> bool:
-        """连续3年年报营收净利增长"""
+        """连续3年年报营收净利增长
+
+        Returns:
+            True: 符合条件
+            False: 不符合条件
+            None: 无法判断（API失败）
+        """
         try:
             profit_df = df.get_profit_statement(code)
             if profit_df.empty:
-                return False
+                logger.debug(f"{code}: 无法获取利润表，跳过")
+                return None  # API失败，跳过
 
             # 取年报数据
             annual = profit_df[profit_df['报告日'].astype(str).str.endswith('1231')].head(4)
             if len(annual) < 4:
-                return False
+                return False  # 数据不足，不符合条件
 
             for i in range(3):
                 curr_rev = _safe_float(annual.iloc[i].get('营业总收入', 0))
@@ -391,14 +419,21 @@ class StockScreener:
             return True
         except Exception as e:
             logger.debug(f"3year_growth check {code}: {e}")
-            return False
+            return None  # 异常时跳过
 
     def _check_quarterly_growth(self, code: str) -> bool:
-        """季报营收净利同比、环比增长"""
+        """季报营收净利同比、环比增长
+
+        Returns:
+            True: 符合条件
+            False: 不符合条件
+            None: 无法判断（API失败）
+        """
         try:
             profit_df = df.get_profit_statement(code)
             if profit_df.empty or len(profit_df) < 6:
-                return False
+                logger.debug(f"{code}: 季报数据不足，跳过")
+                return None  # 数据不足，跳过
 
             # 最新一季
             latest = profit_df.iloc[0]
@@ -415,7 +450,7 @@ class StockScreener:
                     break
 
             if yoy_row is None:
-                return False
+                return False  # 找不到同比数据，不符合条件
 
             curr_rev = _safe_float(latest.get('营业总收入'))
             prev_q_rev = _safe_float(prev_q.get('营业总收入'))
@@ -439,7 +474,7 @@ class StockScreener:
             return True
         except Exception as e:
             logger.debug(f"quarterly_growth check {code}: {e}")
-            return False
+            return None  # 异常时跳过
 
     def _check_controller_stable(self, code: str) -> bool:
         """实控人未变更"""
@@ -462,11 +497,18 @@ class StockScreener:
             return True
 
     def _check_cash_gt_debt(self, code: str) -> bool:
-        """货币资金 > (短期借款+长期借款+应付债券+担保+质押)"""
+        """货币资金 > (短期借款+长期借款+应付债券+担保+质押)
+
+        Returns:
+            True: 符合条件
+            False: 不符合条件
+            None: 无法判断（API失败）
+        """
         try:
             bs = df.get_balance_sheet(code)
             if bs.empty:
-                return False
+                logger.debug(f"{code}: 无法获取资产负债表，跳过")
+                return None  # API失败，跳过
 
             latest = bs.iloc[0]
             cash = _safe_float(latest.get('货币资金', 0))
@@ -507,4 +549,4 @@ class StockScreener:
             return cash > total_debt
         except Exception as e:
             logger.debug(f"cash_gt_debt check {code}: {e}")
-            return False
+            return None  # 异常时跳过
