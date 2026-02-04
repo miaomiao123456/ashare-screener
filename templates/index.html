@@ -1072,17 +1072,39 @@ async function loadShareholders(code) {
       return;
     }
 
+    // 字段中文映射
+    const fieldMap = {
+      'holder_name': '股东名称',
+      '股东名称': '股东名称',
+      'hold_amount': '持股数量',
+      '持股数量': '持股数量',
+      'hold_ratio': '持股比例(%)',
+      '持股比例': '持股比例(%)',
+      'end_date': '报告期',
+      '报告期': '报告期',
+      'ann_date': '公告日期',
+      '公告日期': '公告日期'
+    };
+
     // 获取显示用的列
-    const cols = Object.keys(data[0]).filter(k => !k.startsWith('_'));
+    const cols = Object.keys(data[0]).filter(k => !k.startsWith('_') && !k.startsWith('ts_'));
+    const displayCols = cols.map(c => ({ original: c, display: fieldMap[c] || c }));
+
     let html = '<div class="table-wrap"><table class="sh-table"><thead><tr>';
-    cols.forEach(c => { html += `<th>${c}</th>`; });
+    displayCols.forEach(col => { html += `<th>${col.display}</th>`; });
     html += '</tr></thead><tbody>';
 
     data.forEach(row => {
       html += '<tr>';
-      cols.forEach(c => {
-        const val = String(row[c] || '');
-        const isSoe = c.includes('股东') && isSoeText(val);
+      displayCols.forEach(col => {
+        let val = row[col.original];
+        // 格式化日期
+        if (col.original.includes('date') || col.original.includes('日期') || col.original === '报告期') {
+          val = String(val || '').substring(0, 10);
+        } else {
+          val = String(val || '');
+        }
+        const isSoe = col.original.includes('股东') || col.original.includes('holder_name') ? isSoeText(val) : false;
         html += `<td class="${isSoe ? 'sh-soe' : ''}">${val}</td>`;
       });
       html += '</tr>';
@@ -1119,14 +1141,39 @@ async function loadDividend(code) {
     // 绘制分红图
     renderDividendChart(chartDiv, data);
 
-    // 表格
-    const cols = Object.keys(data[0]).filter(k => !k.startsWith('_'));
+    // 字段中文映射
+    const fieldMap = {
+      '报告期': '报告期',
+      'end_date': '报告期',
+      'cash_div': '每10股派息(元)',
+      'cash_div_tax': '每10股派息-税后(元)',
+      '现金分红-每股派息': '每股派息(元)',
+      '现金分红-现金分红比例': '分红比例',
+      'stk_div': '每10股送股',
+      'stk_bo_rate': '每10股转增',
+      'div_proc': '实施进度',
+      'ann_date': '公告日期',
+      '公告日期': '公告日期'
+    };
+
+    // 获取数据中实际存在的字段
+    const cols = Object.keys(data[0]).filter(k => !k.startsWith('_') && !k.startsWith('ts_'));
+    const displayCols = cols.map(c => ({ original: c, display: fieldMap[c] || c }));
+
     let html = '<div class="table-wrap"><table class="fin-table"><thead><tr>';
-    cols.forEach(c => { html += `<th>${c}</th>`; });
+    displayCols.forEach(col => { html += `<th>${col.display}</th>`; });
     html += '</tr></thead><tbody>';
+
     data.forEach(row => {
       html += '<tr>';
-      cols.forEach(c => { html += `<td>${row[c] ?? ''}</td>`; });
+      displayCols.forEach(col => {
+        let val = row[col.original];
+        // 格式化日期
+        if (col.original.includes('date') || col.original.includes('日期') || col.original === '报告期') {
+          val = String(val || '').substring(0, 10);
+        }
+        html += `<td>${val ?? ''}</td>`;
+      });
       html += '</tr>';
     });
     html += '</tbody></table></div>';

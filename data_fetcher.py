@@ -380,11 +380,18 @@ def get_dividend_history(code: str) -> pd.DataFrame:
         ts_code = _convert_code_to_ts(code)
         # 获取近10年分红
         df = safe_tushare_call(pro.dividend, ts_code=ts_code,
-                              fields='ts_code,end_date,div_proc,stk_div,stk_bo_rate,cash_div,cash_div_tax')
+                              fields='ts_code,ann_date,end_date,div_proc,stk_div,stk_bo_rate,cash_div,cash_div_tax')
 
         if not df.empty:
+            # 中文字段映射
             df['报告期'] = df['end_date']
-            # Tushare的cash_div_tax是每股派息（税后），cash_div是税前
+            df['公告日期'] = df['ann_date']
+            df['实施进度'] = df['div_proc']
+            df['每10股送股'] = df['stk_div'].fillna(0)
+            df['每10股转增'] = df['stk_bo_rate'].fillna(0)
+            df['每10股派息(元)'] = df['cash_div'].fillna(0)
+            df['每10股派息-税后(元)'] = df['cash_div_tax'].fillna(0)
+            # 保留原字段用于兼容性
             df['现金分红-每股派息'] = df['cash_div_tax'].fillna(0) / 10  # Tushare单位是每10股，转为每股
             df['现金分红-现金分红比例'] = df['cash_div'].fillna(0)
             df = df.sort_values('end_date', ascending=False)
@@ -486,9 +493,11 @@ def get_shareholder_info(code: str) -> pd.DataFrame:
                               fields='ts_code,end_date,holder_name,hold_amount,hold_ratio')
 
         if not df.empty:
+            # 中文字段映射
+            df['报告期'] = df['end_date']
             df['股东名称'] = df['holder_name']
             df['持股数量'] = df['hold_amount']
-            df['持股比例'] = df['hold_ratio']
+            df['持股比例(%)'] = df['hold_ratio']
             df = df.sort_values('end_date', ascending=False)
             cache_set(key, df)
         return df
