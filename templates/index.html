@@ -652,6 +652,7 @@ controller_name 去重后：
     </div>
     <div class="tabs">
       <button class="tab-btn active" data-tab="chart" onclick="switchTab('chart')">行情走势</button>
+      <button class="tab-btn" data-tab="forecast" onclick="switchTab('forecast')">业绩预告</button>
       <button class="tab-btn" data-tab="financials" onclick="switchTab('financials')">财务数据</button>
       <button class="tab-btn" data-tab="shareholders" onclick="switchTab('shareholders')">股东信息</button>
       <button class="tab-btn" data-tab="dividend" onclick="switchTab('dividend')">分红记录</button>
@@ -660,6 +661,13 @@ controller_name 去重后：
     <!-- 行情走势 -->
     <div class="tab-pane active" id="pane-chart">
       <div class="chart-box" id="klineChart"></div>
+    </div>
+
+    <!-- 业绩预告 -->
+    <div class="tab-pane" id="pane-forecast">
+      <div id="forecastContent">
+        <div class="loading"><div class="spinner"></div>加载中...</div>
+      </div>
     </div>
 
     <!-- 财务数据 -->
@@ -905,6 +913,7 @@ function switchTab(tabId) {
   if (tabId === 'chart' && currentCode) {
     setTimeout(() => { if (chartInstances.kline) chartInstances.kline.resize(); }, 100);
   }
+  if (tabId === 'forecast' && currentCode) loadForecast(currentCode);
   if (tabId === 'financials' && currentCode) loadFinancials(currentCode);
   if (tabId === 'shareholders' && currentCode) loadShareholders(currentCode);
   if (tabId === 'dividend' && currentCode) loadDividend(currentCode);
@@ -954,27 +963,50 @@ async function loadFinancials(code) {
 
     let html = '';
 
-    // 利润表
+    // 利润表 - 优化字段映射为中文
     if (data.profit && data.profit.length > 0) {
-      html += buildFinTable('利润表', data.profit, [
-        '报告日', '营业总收入', '营业总成本', '营业利润', '利润总额', '净利润'
-      ]);
+      const profitFields = {
+        '报告日': '报告期',
+        'total_revenue': '营业总收入',
+        '营业总收入': '营业总收入',
+        'revenue': '营业收入',
+        'n_income_attr_p': '净利润(归母)',
+        'n_income': '净利润',
+        '净利润': '净利润'
+      };
+      html += buildFinTableWithMapping('利润表', data.profit, profitFields);
     }
 
-    // 资产负债表
+    // 资产负债表 - 优化字段映射为中文
     if (data.balance && data.balance.length > 0) {
-      html += buildFinTable('资产负债表', data.balance, [
-        '报告日', '货币资金', '应收账款', '存货', '总资产',
-        '短期借款', '长期借款', '应付债券', '总负债', '股东权益合计'
-      ]);
+      const balanceFields = {
+        '报告日': '报告期',
+        'money_cap': '货币资金',
+        '货币资金': '货币资金',
+        'st_borr': '短期借款',
+        '短期借款': '短期借款',
+        'lt_borr': '长期借款',
+        '长期借款': '长期借款',
+        'bond_payable': '应付债券',
+        '应付债券': '应付债券'
+      };
+      html += buildFinTableWithMapping('资产负债表', data.balance, balanceFields);
     }
 
-    // 现金流量表
+    // 现金流量表 - 优化字段映射为中文
     if (data.cashflow && data.cashflow.length > 0) {
-      html += buildFinTable('现金流量表', data.cashflow, [
-        '报告日', '经营活动产生的现金流量净额', '投资活动产生的现金流量净额',
-        '筹资活动产生的现金流量净额', '现金及现金等价物净增加额'
-      ]);
+      const cashflowFields = {
+        '报告日': '报告期',
+        'n_cashflow_act': '经营活动现金流',
+        '经营活动现金流': '经营活动现金流',
+        'c_inf_fr_invest_a': '投资活动现金流',
+        '投资活动现金流': '投资活动现金流',
+        'c_inf_fr_fin_a': '筹资活动现金流',
+        '筹资活动现金流': '筹资活动现金流',
+        'c_paid_invest': '投资支付现金',
+        '投资支付的现金': '投资支付现金'
+      };
+      html += buildFinTableWithMapping('现金流量表', data.cashflow, cashflowFields);
     }
 
     tablesDiv.innerHTML = html || '<div class="loading">暂无财务数据</div>';
@@ -983,20 +1015,29 @@ async function loadFinancials(code) {
   }
 }
 
-function buildFinTable(title, rows, fields) {
-  // 找出实际存在的字段
-  const existing = fields.filter(f => rows.some(r => r[f] !== undefined && r[f] !== null));
+function buildFinTableWithMapping(title, rows, fieldMapping) {
+  // 找出实际存在的字段并映射为中文
+  const existing = [];
+  const displayNames = [];
+
+  for (const [originalField, displayName] of Object.entries(fieldMapping)) {
+    if (rows.some(r => r[originalField] !== undefined && r[originalField] !== null && r[originalField] !== '')) {
+      existing.push(originalField);
+      displayNames.push(displayName);
+    }
+  }
+
   if (existing.length === 0) return '';
 
   let html = `<div class="fin-section"><h3>${title}</h3><div class="table-wrap"><table class="fin-table"><thead><tr>`;
-  existing.forEach(f => { html += `<th>${f === '报告日' ? '报告期' : f}</th>`; });
+  displayNames.forEach(name => { html += `<th>${name}</th>`; });
   html += '</tr></thead><tbody>';
 
   rows.forEach(row => {
     html += '<tr>';
-    existing.forEach(f => {
-      let val = row[f];
-      if (f === '报告日') {
+    existing.forEach(field => {
+      let val = row[field];
+      if (field === '报告日') {
         html += `<td>${String(val || '').substring(0, 10)}</td>`;
       } else {
         val = parseFloat(val) || 0;
@@ -1092,6 +1133,66 @@ async function loadDividend(code) {
     tableDiv.innerHTML = html;
   } catch (e) {
     tableDiv.innerHTML = '<div class="loading">加载失败</div>';
+  }
+}
+
+async function loadForecast(code) {
+  const div = document.getElementById('forecastContent');
+  if (div.dataset.loaded === code) return;
+  div.innerHTML = '<div class="loading"><div class="spinner"></div>加载业绩预告...</div>';
+
+  try {
+    const r = await fetch(`/api/stock/${code}/forecast`);
+    const data = await r.json();
+    div.dataset.loaded = code;
+
+    if (!data || data.length === 0) {
+      div.innerHTML = '<div class="loading">暂无业绩预告数据</div>';
+      return;
+    }
+
+    // 业绩预告类型中文映射
+    const typeMap = {
+      '预增': '业绩预增',
+      '续盈': '继续盈利',
+      '扭亏': '扭亏为盈',
+      '略增': '略微增长',
+      '预减': '业绩预减',
+      '续亏': '继续亏损',
+      '首亏': '首次亏损',
+      '略减': '略微下降',
+      '不确定': '不确定'
+    };
+
+    let html = '<div class="fin-section"><h3>最新业绩预告</h3>';
+    data.forEach(row => {
+      const type = row['业绩变动类型'] || row['type'] || '';
+      const typeText = typeMap[type] || type;
+      const annDate = String(row['公告日期'] || row['ann_date'] || '').substring(0, 10);
+      const endDate = String(row['报告期'] || row['end_date'] || '').substring(0, 10);
+      const summary = row['业绩预告摘要'] || row['summary'] || '';
+      const pChangeMin = row['净利润变动幅度最小值'] || row['p_change_min'] || '';
+      const pChangeMax = row['净利润变动幅度最大值'] || row['p_change_max'] || '';
+
+      html += '<div class="forecast-item" style="padding:1rem; margin-bottom:0.5rem; background:#f8f9fa; border-radius:8px; border-left:3px solid #2a9d8f;">';
+      html += `<div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:0.5rem;">`;
+      html += `<span><b>报告期:</b> ${endDate}</span>`;
+      html += `<span><b>公告日期:</b> ${annDate}</span>`;
+      html += `<span><b>类型:</b> <span style="color:#e63946; font-weight:600;">${typeText}</span></span>`;
+      if (pChangeMin || pChangeMax) {
+        html += `<span><b>净利润变动:</b> ${pChangeMin}% ~ ${pChangeMax}%</span>`;
+      }
+      html += `</div>`;
+      if (summary) {
+        html += `<div style="font-size:0.9rem; color:#555;"><b>摘要:</b> ${summary}</div>`;
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+
+    div.innerHTML = html;
+  } catch (e) {
+    div.innerHTML = '<div class="loading">加载失败</div>';
   }
 }
 
@@ -1197,7 +1298,16 @@ function renderGrowthCharts(profitData) {
 function renderDividendChart(container, data) {
   if (!data || data.length === 0) return;
 
-  const years = data.map(r => String(r['报告期'] || '').substring(0, 4)).reverse();
+  // 使用完整日期显示（报告期），而不是只显示年份
+  const dates = data.map(r => {
+    const dateStr = String(r['报告期'] || r['end_date'] || '');
+    // 格式化为 YYYY-MM-DD
+    if (dateStr.length >= 8) {
+      return dateStr.substring(0, 4) + '-' + dateStr.substring(4, 6) + '-' + dateStr.substring(6, 8);
+    }
+    return dateStr.substring(0, 10);
+  }).reverse();
+
   const cashDiv = data.map(r => {
     let v = parseFloat(r['现金分红-每股派息'] || r['现金分红-现金分红比例'] || 0);
     return v;
@@ -1207,8 +1317,23 @@ function renderDividendChart(container, data) {
   chartInstances.dividend = chart;
   chart.setOption({
     title: { text: '历年分红', textStyle: { fontSize: 13 }, left: 'center' },
-    tooltip: { trigger: 'axis' },
-    xAxis: { type: 'category', data: years },
+    tooltip: {
+      trigger: 'axis',
+      formatter: function(params) {
+        if (params && params.length > 0) {
+          return `${params[0].axisValue}<br/>每10股派息: ${params[0].value.toFixed(2)}元`;
+        }
+        return '';
+      }
+    },
+    xAxis: {
+      type: 'category',
+      data: dates,
+      axisLabel: {
+        rotate: 45,  // 旋转标签以便显示完整日期
+        fontSize: 10
+      }
+    },
     yAxis: { type: 'value', name: '每10股派息(元)' },
     series: [{
       type: 'bar',
@@ -1216,7 +1341,7 @@ function renderDividendChart(container, data) {
       itemStyle: { color: '#2a9d8f' },
       barWidth: '50%'
     }],
-    grid: { left: '12%', right: '5%', bottom: '10%', top: '18%' }
+    grid: { left: '12%', right: '5%', bottom: '20%', top: '18%' }  // 增加底部空间以显示旋转的标签
   });
 }
 

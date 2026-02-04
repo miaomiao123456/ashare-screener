@@ -212,5 +212,17 @@ def stock_sector(code):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/stock/<code>/forecast')
+def stock_forecast(code):
+    """业绩预告"""
+    try:
+        forecast_df = df.get_forecast(code)
+        if forecast_df.empty:
+            return jsonify([])
+        return jsonify(forecast_df.head(10).fillna('').to_dict(orient='records'))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

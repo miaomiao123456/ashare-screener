@@ -239,6 +239,42 @@ def get_financial_indicator(code: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+# ============ 业绩预告 ============
+
+def get_forecast(code: str) -> pd.DataFrame:
+    """获取业绩预告"""
+    key = f"forecast_{code}"
+    cached = cache_get(key, 6)  # 缓存6小时，业绩预告更新较频繁
+    if cached is not None:
+        return cached
+
+    try:
+        ts_code = _convert_code_to_ts(code)
+        # 获取最近2年的业绩预告
+        end_date = datetime.now().strftime('%Y%m%d')
+        start_date = (datetime.now() - timedelta(days=730)).strftime('%Y%m%d')
+
+        df = safe_tushare_call(pro.forecast, ts_code=ts_code,
+                              start_date=start_date, end_date=end_date,
+                              fields='ts_code,ann_date,end_date,type,p_change_min,p_change_max,net_profit_min,net_profit_max,summary')
+
+        if not df.empty:
+            df['公告日期'] = df['ann_date']
+            df['报告期'] = df['end_date']
+            df['业绩变动类型'] = df['type']
+            df['净利润变动幅度最小值'] = df['p_change_min']
+            df['净利润变动幅度最大值'] = df['p_change_max']
+            df['预告净利润最小值'] = df['net_profit_min']
+            df['预告净利润最大值'] = df['net_profit_max']
+            df['业绩预告摘要'] = df['summary']
+            df = df.sort_values('ann_date', ascending=False)
+            cache_set(key, df)
+        return df
+    except Exception as e:
+        logger.warning(f"get_forecast({code}): {e}")
+        return pd.DataFrame()
+
+
 # ============ 财务报表 ============
 
 def get_profit_statement(code: str) -> pd.DataFrame:
@@ -315,11 +351,14 @@ def get_cashflow_statement(code: str) -> pd.DataFrame:
 
         df = safe_tushare_call(pro.cashflow, ts_code=ts_code,
                               start_date=start_date, end_date=end_date,
-                              fields='ts_code,end_date,n_cashflow_act,c_paid_goods_s')
+                              fields='ts_code,end_date,n_cashflow_act,c_inf_fr_invest_a,c_inf_fr_fin_a,c_paid_invest')
 
         if not df.empty:
             df['报告日'] = df['end_date']
             df['经营活动现金流'] = df['n_cashflow_act']
+            df['投资活动现金流'] = df['c_inf_fr_invest_a']
+            df['筹资活动现金流'] = df['c_inf_fr_fin_a']
+            df['投资支付的现金'] = df['c_paid_invest']
             df = df.sort_values('end_date', ascending=False)
             cache_set(key, df)
         return df
