@@ -497,7 +497,10 @@ class StockScreener:
             return True
 
     def _check_cash_gt_debt(self, code: str) -> bool:
-        """货币资金 > (短期借款+长期借款+应付债券+担保+质押)
+        """货币资金 > 有息负债
+
+        有息负债 = 短期借款 + 长期借款 + 应付债券
+        注：不包含一年内到期非流动负债
 
         Returns:
             True: 符合条件
@@ -516,37 +519,10 @@ class StockScreener:
             long_debt = _safe_float(latest.get('长期借款', 0))
             bonds = _safe_float(latest.get('应付债券', 0))
 
-            # 质押数据
-            pledge_amount = 0
-            try:
-                pledge_df = df.get_pledge_data()
-                if not pledge_df.empty:
-                    code_col = None
-                    for col in pledge_df.columns:
-                        if '代码' in col:
-                            code_col = col
-                            break
-                    if code_col:
-                        stock_pledge = pledge_df[
-                            pledge_df[code_col].astype(str).str.zfill(6) == code
-                        ]
-                        if not stock_pledge.empty:
-                            # 质押比例
-                            ratio_col = None
-                            for col in stock_pledge.columns:
-                                if '比例' in col or '比率' in col:
-                                    ratio_col = col
-                                    break
-                            if ratio_col:
-                                ratio = _safe_float(stock_pledge.iloc[0].get(ratio_col, 0))
-                                # 质押比例超过30%认为风险较大，粗略估算
-                                if ratio > 30:
-                                    return False
-            except Exception:
-                pass
+            # 有息负债 = 短期借款 + 长期借款 + 应付债券
+            interest_bearing_debt = short_debt + long_debt + bonds
 
-            total_debt = short_debt + long_debt + bonds + pledge_amount
-            return cash > total_debt
+            return cash > interest_bearing_debt
         except Exception as e:
             logger.debug(f"cash_gt_debt check {code}: {e}")
             return None  # 异常时跳过
