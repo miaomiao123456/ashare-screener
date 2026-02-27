@@ -1,4 +1,5 @@
 flask>=3.0.0
+flask-cors>=4.0.0
 tushare>=1.2.89
 pandas>=2.0.0
 numpy>=1.24.0

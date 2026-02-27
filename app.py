@@ -9,6 +9,7 @@ import threading
 import uuid
 from datetime import datetime
 from flask import Flask, render_template, jsonify, request
+from flask_cors import CORS
 
 # 确保当前目录在路径中
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -20,6 +21,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__, template_folder='templates')
+CORS(app)  # 启用CORS支持
 
 # ============ 全局筛选状态 ============
 screening_state = {
